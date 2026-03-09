@@ -192,7 +192,7 @@
     <div class="form-container">
         <h1>Регистрационная форма</h1>
         
-        <form id="userForm">
+        <form id="userForm" action="/submit" method="POST">
             <div class="form-group">
                 <label for="fullName">ФИО *</label>
                 <input type="text" id="fullName" name="fullName" required placeholder="Введите ваше ФИО">
@@ -295,19 +295,9 @@
                 </div>
             </div>
 
-            <button type="submit">Сохранить</button>
+            <button type="submit" value="Submit">Сохранить</button>
         </form>
     </div>
-
-    <script>
-        document.getElementById('userForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            alert('Форма успешно отправлена! (Это демонстрация)');
-        });
-
-        // Установка текущей даты как максимальной для поля даты рождения
-        document.getElementById('birthDate').max = new Date().toISOString().split('T')[0];
-    </script>
 </body>
 </html>
 
