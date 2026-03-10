@@ -1,8 +1,13 @@
 package main
 
 import (
+	"os"
 	"fmt"
 	"net/http"
+    "database/sql"
+	"log"
+
+    "github.com/go-sql-driver/mysql"
 )
 
 type Person struct {
@@ -15,6 +20,8 @@ type Person struct {
 	bio string
 	contract bool
 }
+
+var db *sql.DB
 
 func indexHandler(output http.ResponseWriter, request *http.Request){
 	http.ServeFile(output, request, "index.html")
@@ -45,6 +52,24 @@ func parseFormRequest(request *http.Request) Person{
 	return person
 }
 
+func dataBseConnection(){
+	cfg := mysql.NewConfig()
+	cfg.User = os.Getenv("DBUSER")
+	cfg.Passwd = os.Getenv("DBPASS")
+	cfg.Net = "tcp"
+	cfg.Addr = "127.0.0.1:3306"
+	cfg.DBName = "web3_users"
+
+	db, _ = sql.Open("mysql", cfg.FormatDSN())
+
+    pingErr := db.Ping()
+    if pingErr != nil {
+        log.Fatal(pingErr)
+    }
+
+	fmt.Println("Bd connected!")
+}
+
 func savePerson(output http.ResponseWriter, request *http.Request){
 	if request.Method != "Post" {
 		http.Redirect(output, request, "/", http.StatusSeeOther)
@@ -57,6 +82,8 @@ func savePerson(output http.ResponseWriter, request *http.Request){
 }
 
 func main(){
+	dataBseConnection()
+
 	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/submit", savePerson)
 	http.ListenAndServe(":8080", nil)
