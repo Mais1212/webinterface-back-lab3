@@ -30,7 +30,7 @@ var db *sql.DB
 
 
 func indexHandler(output http.ResponseWriter, request *http.Request){
-	http.ServeFile(output, request, "index.html")
+	http.ServeFile(output, request, "static/index.html")
 }
 
 
