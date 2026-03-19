@@ -140,8 +140,9 @@ func savePerson(output http.ResponseWriter, request *http.Request){
 func main(){
 	dataBseConnection()
 	
-
-	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/submit", savePerson)
+	http.HandleFunc("/index", indexHandler)
+
+	http.Handle("/", http.FileServer(http.Dir("static")))
 	http.ListenAndServe(":8080", nil)
 }
