@@ -1,40 +1,38 @@
 package main
 
 import (
-	"os"
-	"fmt"
-	"net/http"
 	"database/sql"
+	"fmt"
 	"log"
+	"net/http"
+	"os"
 
-    "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 )
 
 type Person struct {
-	fullName string
-	phone string
-	email string
-	gender string
+	fullName  string
+	phone     string
+	email     string
+	gender    string
 	birthDate string
 	languages []int
-	bio string
-	contract int
+	bio       string
+	contract  int
 }
 
 type Language struct {
-	id int
+	id   int
 	name string
 }
 
 var db *sql.DB
 
-
-func indexHandler(output http.ResponseWriter, request *http.Request){
+func indexHandler(output http.ResponseWriter, request *http.Request) {
 	http.ServeFile(output, request, "static/index.html")
 }
 
-
-func parseFormRequest(request *http.Request) Person{
+func parseFormRequest(request *http.Request) Person {
 	fullName := request.FormValue("fullName") // first only fiels
 	phone := request.FormValue("phone")
 	email := request.FormValue("email")
@@ -47,8 +45,8 @@ func parseFormRequest(request *http.Request) Person{
 	var languagesIds []int
 
 	// неоптимизировано + ужасно, сейчас не хочу править и не знаю как
-	for _, value := range languages{
-		for _, language := range dbLanguages{
+	for _, value := range languages {
+		for _, language := range dbLanguages {
 			if language.name == value {
 				languagesIds = append(languagesIds, language.id)
 				break
@@ -58,22 +56,21 @@ func parseFormRequest(request *http.Request) Person{
 
 	// Maybe unnescessary check, cause contract is allways must be on :)
 	var contract int
-	if request.FormValue("contract") == "on"{
+	if request.FormValue("contract") == "on" {
 		contract = 1
 	} else {
 		contract = 0
 	}
 
 	person := Person{
-		fullName, phone,  email, gender,
+		fullName, phone, email, gender,
 		birthDate, languagesIds, bio, contract,
 	}
 
 	return person
 }
 
-
-func dataBseConnection(){
+func dataBseConnection() {
 	cfg := mysql.NewConfig()
 	cfg.User = os.Getenv("DBUSER")
 	cfg.Passwd = os.Getenv("DBPASS")
@@ -81,65 +78,81 @@ func dataBseConnection(){
 	cfg.Addr = "127.0.0.1:3306"
 	cfg.DBName = "web3"
 
-	db, _ = sql.Open("mysql", cfg.FormatDSN())
+	var err error
+	db, err = sql.Open("mysql", cfg.FormatDSN())
+	if err != nil{
+		log.fatal(err)
+	}
 
-    pingErr := db.Ping()
-    if pingErr != nil {
-        log.Fatal(pingErr)
-    }
+	pingErr := db.Ping()
+	if pingErr != nil {
+		log.Fatal(pingErr)
+	}
 
 	fmt.Println("Bd connected!")
 }
 
-
 func getLanguages(db *sql.DB) []Language {
-    rows, _ := db.Query("SELECT id, name FROM programming_languages")
+
+	rows, err := db.Query("SELECT id, name FROM programming_languages")
+
+	if err != nil {
+		log.Printf("Error querying languages: %v", err)
+		return nil // или return []Language{}
+	}
+	defer rows.Close()
 
 	var languages []Language
 
-    for rows.Next() {
+	for rows.Next() {
 		var language Language
 		rows.Scan(&language.id, &language.name)
 		languages = append(languages, language)
-    }
+	}
 
 	return languages
 }
 
-
-func savePerson(output http.ResponseWriter, request *http.Request){
+func savePerson(output http.ResponseWriter, request *http.Request) {
 	if request.Method != "Post" {
 		http.Redirect(output, request, "/", http.StatusSeeOther)
 	}
 	person := parseFormRequest(request)
 
 	// Querry to add new person
-	result, _ := db.Exec(
+	result, err := db.Exec(
 		"INSERT INTO person (full_name, phone, email, birth_date, gender, biography) VALUES (?,?,?,?,?,?);",
 		person.fullName, person.phone, person.email, person.birthDate,
 		person.gender, person.bio,
 	)
-
-	personID, err := result.LastInsertId()
-	if err != nil{
-        log.Fatal(err)
+	if err != nil {
+		log.Printf("Error inserting person: %v", err)
+		return
 	}
 
+	personID, err := result.LastInsertId()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Querry to add favorite languages for person!
 	for _, langID := range person.languages {
-		db.Exec(`
+		_, err := db.Exec(`
 			INSERT INTO person_language (person_id, language_id) 
 			VALUES (?, ?)`,
 			personID, langID,
 		)
+		if err != nil {
+			log.Printf("Error insterting language %d for person %d: %v", langID,
+				personID, err,
+			)
+		}
 	}
 }
 
-
-func main(){
+func main() {
 	dataBseConnection()
-	
+
 	http.HandleFunc("/submit", savePerson)
 	http.HandleFunc("/index", indexHandler)
 
