@@ -6,6 +6,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
+	"html/template"
+	"net/url"
 
 	"github.com/go-sql-driver/mysql"
 )
@@ -28,8 +31,76 @@ type Language struct {
 
 var db *sql.DB
 
+func validatePerson(p Person) bool {
+	// fullName: required, max 255 chars, кириллица/латиница + пробелы/дефисы
+	if len(p.fullName) == 0 || len(p.fullName) > 255 {
+		return false
+	}
+	nameRe := regexp.MustCompile(`^[ЁёА-Яа-яA-Za-z\s\-]+$`)
+	if !nameRe.MatchString(p.fullName) {
+		return false
+	}
+
+	// phone: required (HTML *), российский формат +7(999)123-45-67 или 89991234567
+	if p.phone == "" || len(p.phone) < 10 {
+		return false
+	}
+	phoneRe := regexp.MustCompile(`^(?:\+?7|8|7)?[\s\-\(\)]?[0-9]{3}[\s\-\)]?[0-9]{3}[\s\-]?[0-9]{2}[\s\-]?[0-9]{2}$`)
+	if !phoneRe.MatchString(p.phone) {
+		return false
+	}
+
+	// email: required (HTML *), стандарт
+	if p.email == "" {
+		return false
+	}
+	emailRe := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	if !emailRe.MatchString(p.email) {
+		return false
+	}
+
+	// birthDate: required (HTML *), YYYY-MM-DD от input type="date"
+	if p.birthDate == "" {
+		return false
+	}
+	dateRe := regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$`)
+	if !dateRe.MatchString(p.birthDate) {
+		return false
+	}
+
+	// gender: male/female (из radio-buttons HTML)
+	if p.gender != "male" && p.gender != "female" {
+		return false
+	}
+
+	// languages: любой набор (пустой OK)
+	for _, id := range p.languages {
+		if id <= 0 {
+			return false
+		}
+	}
+
+	// contract: required checkbox (1 или 0)
+	if p.contract != 0 && p.contract != 1 {
+		return false
+	}
+
+	// bio: optional textarea
+	return true
+}
+
+
 func indexHandler(output http.ResponseWriter, request *http.Request) {
-	http.ServeFile(output, request, "static/index.html")
+    data := struct {
+        Error string
+    }{}
+    errStr := request.URL.Query().Get("error")
+    if errStr != "" {
+        data.Error = errStr
+    }
+
+    tmpl := template.Must(template.ParseFiles("static/index.html"))
+    tmpl.Execute(output, data)
 }
 
 func parseFormRequest(request *http.Request) Person {
@@ -80,8 +151,8 @@ func dataBseConnection() {
 
 	var err error
 	db, err = sql.Open("mysql", cfg.FormatDSN())
-	if err != nil{
-		log.fatal(err)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	pingErr := db.Ping()
@@ -114,10 +185,21 @@ func getLanguages(db *sql.DB) []Language {
 }
 
 func savePerson(output http.ResponseWriter, request *http.Request) {
-	if request.Method != "Post" {
+	if request.Method != "POST" {
+		fmt.Println(" err post!!")
 		http.Redirect(output, request, "/", http.StatusSeeOther)
+		return
 	}
+
 	person := parseFormRequest(request)
+
+	if !validatePerson(person) {
+			v := url.Values{}
+			v.Add("error", "Некорректные данные!")
+			http.Redirect(output, request, "/?"+v.Encode(), http.StatusSeeOther)
+			fmt.Println(" errrorrr!!")
+			return
+	}
 
 	// Querry to add new person
 	result, err := db.Exec(
@@ -142,20 +224,24 @@ func savePerson(output http.ResponseWriter, request *http.Request) {
 			VALUES (?, ?)`,
 			personID, langID,
 		)
+
 		if err != nil {
 			log.Printf("Error insterting language %d for person %d: %v", langID,
 				personID, err,
 			)
 		}
 	}
+
+	fmt.Println("ready!!!")
 }
 
 func main() {
 	dataBseConnection()
 
+	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/submit", savePerson)
-	http.HandleFunc("/index", indexHandler)
 
-	http.Handle("/", http.FileServer(http.Dir("static")))
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+
 	http.ListenAndServe(":8080", nil)
 }
